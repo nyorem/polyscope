@@ -285,8 +285,13 @@ glm::mat4 getCameraPerspectiveMatrix() {
 }
 
 glm::vec3 getCameraWorldPosition() {
+  // glm throws a SIGFPE when inverting a non-invertible matrix in Debug mode
+  glm::mat4 mat = getCameraViewMatrix();
+  if (! glm::determinant(mat)) {
+      return glm::vec3{0.0f, 0.0f, 0.0f};
+  }
   // This will work no matter how the view matrix is constructed...
-  glm::mat4 invViewMat = inverse(getCameraViewMatrix());
+  glm::mat4 invViewMat = inverse(mat);
   return glm::vec3{invViewMat[3][0], invViewMat[3][1], invViewMat[3][2]};
 }
 
