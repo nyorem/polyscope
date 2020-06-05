@@ -1,6 +1,7 @@
 // Copyright 2017-2019, Nicholas Sharp and the Polyscope contributors. http://polyscope.run.
 #pragma once
 
+#include <algorithm>
 #include <complex>
 #include <cstdio>
 #include <iomanip>
@@ -9,6 +10,7 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include <tuple>
 
 
 #include <glm/glm.hpp>
@@ -51,6 +53,10 @@ std::string str_printf(const std::string& format, Args... args) {
   std::snprintf(buf.get(), size, format.c_str(), args...);
   return std::string(buf.get(), buf.get() + size - 1);
 }
+
+// Splits e.g. "file.png" to "file" and ".png"
+// Very naive, shouldn't be assumed to work for general paths
+std::tuple<std::string, std::string> splitExt(std::string f);
 
 // === GLM vector operations
 inline glm::vec3 componentwiseMin(const glm::vec3& vA, const glm::vec3& vB) {

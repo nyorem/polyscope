@@ -1,7 +1,6 @@
 // Copyright 2017-2019, Nicholas Sharp and the Polyscope contributors. http://polyscope.run.
 #pragma once
 
-#include "polyscope/gl/gl_utils.h"
 #include "polyscope/messages.h"
 #include "polyscope/options.h"
 #include "polyscope/screenshot.h"
@@ -20,10 +19,10 @@ namespace polyscope {
 // forward declarations
 class Structure;
 
-// Initialize polyscope, including windowing system and openGL. Should be
-// called exactly once at the beginning of a program. If initialization
-// fails in any way, an exception will be thrown.
-void init();
+// Initialize polyscope, including windowing system and openGL. Should be called exactly once at the beginning of a
+// program. If initialization fails in any way, an exception will be thrown.
+// The backend string sets which rendering backend to use. If "", a reasonable default backend will be chosen.
+void init(std::string backend = "");
 
 // Give control to the polyscope GUI. Blocks until the user returns control via
 // the GUI, possibly by exiting the window.
@@ -95,7 +94,7 @@ bool redrawRequested();
 // in general the top callback will be called instead. Primarily exists to manage the ImGUI context, so callbacks can
 // create other contexts and circumvent the main draw loop. This is used internally to implement messages, element
 // selections, etc.
-void pushContext(std::function<void()> callbackFunction);
+void pushContext(std::function<void()> callbackFunction, bool drawDefaultUI=true);
 void popContext();
 
 // === Utility
@@ -103,11 +102,8 @@ void popContext();
 // Execute one iteration of the main loop
 // Exposed so that some weird flow (eg, errors) can re-enter the main loop when appropriate. Be careful!
 void mainLoopIteration();
-void bindDefaultBuffer();
 void initializeImGUIContext();
 void drawStructures();
 
-// Share a font atlas for multiple uses (mainly with imgui)
-ImFontAtlas* getGlobalFontAtlas();
 
 } // namespace polyscope
