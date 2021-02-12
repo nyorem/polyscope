@@ -2,6 +2,7 @@
 #include "polyscope/view.h"
 
 #include "polyscope/polyscope.h"
+#include "polyscope/utilities.h"
 
 #include "imgui.h"
 
@@ -74,6 +75,15 @@ void processRotate(glm::vec2 startP, glm::vec2 endP) {
       break;
     case UpDir::ZUp:
       turntableUp = glm::vec3(0., 0., 1.);
+      break;
+    case UpDir::NegXUp:
+      turntableUp = glm::vec3(-1., 0., 0.);
+      break;
+    case UpDir::NegYUp:
+      turntableUp = glm::vec3(0., -1., 0.);
+      break;
+    case UpDir::NegZUp:
+      turntableUp = glm::vec3(0., 0., -1.);
       break;
     }
     glm::mat4x4 thetaCamR = glm::rotate(glm::mat4x4(1.0), delTheta, turntableUp);
@@ -193,7 +203,7 @@ void processZoom(double amount) {
 
 void invalidateView() { viewMat = glm::mat4x4(std::numeric_limits<float>::quiet_NaN()); }
 
-void ensureViewValid() {
+bool viewIsValid() {
   bool allFinite = true;
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
@@ -202,8 +212,18 @@ void ensureViewValid() {
       }
     }
   }
+  return allFinite;
+}
 
-  if (!allFinite) {
+void ensureViewValid() {
+  if (!viewIsValid()) {
+    for (int i = 0; i < 4; i++) {
+      for (int j = 0; j < 4; j++) {
+        if (!std::isfinite(viewMat[i][j])) {
+          viewMat[i][j] = 0.;
+        }
+      }
+    }
     resetCameraToHomeView();
   }
 }
@@ -214,18 +234,33 @@ glm::mat4 computeHomeView() {
   glm::vec3 baseUp;
   switch (upDir) {
   case UpDir::XUp:
+  case UpDir::NegXUp:
     baseUp = glm::vec3(1., 0., 0.);
     R = glm::rotate(glm::mat4x4(1.0), static_cast<float>(PI / 2), glm::vec3(0., 0., 1.));
+    if (upDir == UpDir::NegXUp) {
+      baseUp *= -1;
+      R = glm::rotate(R, static_cast<float>(PI), glm::vec3(0., 0., 1.));
+    }
     break;
   case UpDir::YUp:
+  case UpDir::NegYUp:
     baseUp = glm::vec3(0., 1., 0.);
     // this is our camera's default
+    if (upDir == UpDir::NegYUp) {
+      baseUp *= -1;
+      R = glm::rotate(R, static_cast<float>(PI), glm::vec3(0., 0., 1.));
+    }
     break;
   case UpDir::ZUp:
+  case UpDir::NegZUp:
     baseUp = glm::vec3(0., 0., 1.);
     R = glm::rotate(glm::mat4x4(1.0), static_cast<float>(PI / 2), glm::vec3(-1., 0., 0.));
     R = glm::rotate(glm::mat4x4(1.0), static_cast<float>(PI), glm::vec3(0., 1., 0.)) *
         R; // follow common convention for "front"
+    if (upDir == UpDir::NegZUp) {
+      baseUp *= -1;
+      R = glm::rotate(R, static_cast<float>(PI), glm::vec3(0., 1., 0.));
+    }
     break;
   }
 
@@ -242,6 +277,11 @@ glm::mat4 computeHomeView() {
 void resetCameraToHomeView() {
 
   // WARNING: Duplicated here and in flyToHomeView()
+
+  // If the view is invalid, don't change it. It will get reset before the first call to show().
+  if (!viewIsValid()) {
+    return;
+  }
 
   viewMat = computeHomeView();
 
@@ -311,6 +351,19 @@ void getCameraFrame(glm::vec3& lookDir, glm::vec3& upDir, glm::vec3& rightDir) {
   rightDir = Rt * glm::vec3(1.0, 0.0, 0.0);
 }
 
+glm::vec3 screenCoordsToWorldRay(glm::vec2 screenCoords) {
+
+  glm::mat4 view = getCameraViewMatrix();
+  glm::mat4 proj = getCameraPerspectiveMatrix();
+  glm::vec4 viewport = {0., 0., view::windowWidth, view::windowHeight};
+
+  glm::vec3 screenPos3{screenCoords.x, view::windowHeight - screenCoords.y, 0.};
+  glm::vec3 worldPos = glm::unProject(screenPos3, view, proj, viewport);
+  glm::vec3 worldRayDir = glm::normalize(glm::vec3(worldPos) - getCameraWorldPosition());
+
+  return worldRayDir;
+}
+
 void startFlightTo(const CameraParameters& p, float flightLengthInSeconds) {
   // startFlightTo(p.E, glm::degrees(2 * std::atan(1. / (2. * p.focalLengths.y))),
   //               flightLengthInSeconds);
@@ -367,27 +420,6 @@ void updateFlight() {
     }
     requestRedraw(); // flight is still happening, draw again next frame
   }
-}
-
-void splitTransform(const glm::mat4& trans, glm::mat3x4& R, glm::vec3& T) {
-  for (int i = 0; i < 3; i++) {
-    for (int j = 0; j < 4; j++) {
-      R[i][j] = trans[i][j];
-    }
-    T[i] = trans[3][i];
-  }
-}
-
-glm::mat4 buildTransform(const glm::mat3x4& R, const glm::vec3& T) {
-  glm::mat4 trans(1.0);
-  for (int i = 0; i < 3; i++) {
-    for (int j = 0; j < 4; j++) {
-      trans[i][j] = R[i][j];
-    }
-    trans[3][i] = T[i];
-  }
-
-  return trans;
 }
 
 std::string getCameraJson() {
@@ -471,58 +503,93 @@ void buildViewGui() {
   if (ImGui::TreeNode("View")) {
 
     // == Camera style
+
+    std::string viewStyleName;
+    switch (view::style) {
+    case view::NavigateStyle::Turntable:
+      viewStyleName = "Turntable";
+      break;
+    case view::NavigateStyle::Free:
+      viewStyleName = "Free";
+      break;
+    case view::NavigateStyle::Planar:
+      viewStyleName = "Planar";
+      break;
+    case view::NavigateStyle::Arcball:
+      viewStyleName = "Arcball";
+      break;
+    }
+
     ImGui::PushItemWidth(120);
-    static std::string viewStyleName = "Turntable";
     if (ImGui::BeginCombo("##View Style", viewStyleName.c_str())) {
       if (ImGui::Selectable("Turntable", view::style == view::NavigateStyle::Turntable)) {
         view::style = view::NavigateStyle::Turntable;
         view::flyToHomeView();
         ImGui::SetItemDefaultFocus();
-        viewStyleName = "Turntable";
       }
       if (ImGui::Selectable("Free", view::style == view::NavigateStyle::Free)) {
         view::style = view::NavigateStyle::Free;
         ImGui::SetItemDefaultFocus();
-        viewStyleName = "Free";
       }
       if (ImGui::Selectable("Planar", view::style == view::NavigateStyle::Planar)) {
         view::style = view::NavigateStyle::Planar;
         view::flyToHomeView();
         ImGui::SetItemDefaultFocus();
-        viewStyleName = "Planar";
       }
-      // if (ImGui::Selectable("Arcblob", view::style == view::NavigateStyle::Arcball)) {
-      // view::style = view::NavigateStyle::Arcball;
-      // ImGui::SetItemDefaultFocus();
-      // viewStyleName = "Arcblob";
-      //}
       ImGui::EndCombo();
     }
     ImGui::SameLine();
-    ImGui::Text("Camera Style");
 
+    ImGui::Text("Camera Style");
 
     // == Up direction
     ImGui::PushItemWidth(120);
-    static std::string upStyleName = "Y Up";
+    std::string upStyleName;
+    switch (upDir) {
+    case UpDir::XUp:
+      upStyleName = "X Up";
+      break;
+    case UpDir::NegXUp:
+      upStyleName = "-X Up";
+      break;
+    case UpDir::YUp:
+      upStyleName = "Y Up";
+      break;
+    case UpDir::NegYUp:
+      upStyleName = "-Y Up";
+      break;
+    case UpDir::ZUp:
+      upStyleName = "Z Up";
+      break;
+    case UpDir::NegZUp:
+      upStyleName = "-Z Up";
+      break;
+    }
+
     if (ImGui::BeginCombo("##Up Direction", upStyleName.c_str())) {
       if (ImGui::Selectable("X Up", view::upDir == view::UpDir::XUp)) {
-        view::upDir = view::UpDir::XUp;
-        view::flyToHomeView();
+        view::setUpDir(view::UpDir::XUp, true);
         ImGui::SetItemDefaultFocus();
-        upStyleName = "X Up";
+      }
+      if (ImGui::Selectable("-X Up", view::upDir == view::UpDir::NegXUp)) {
+        view::setUpDir(view::UpDir::NegXUp, true);
+        ImGui::SetItemDefaultFocus();
       }
       if (ImGui::Selectable("Y Up", view::upDir == view::UpDir::YUp)) {
-        view::upDir = view::UpDir::YUp;
-        view::flyToHomeView();
+        view::setUpDir(view::UpDir::YUp, true);
         ImGui::SetItemDefaultFocus();
-        upStyleName = "Y Up";
+      }
+      if (ImGui::Selectable("-Y Up", view::upDir == view::UpDir::NegYUp)) {
+        view::setUpDir(view::UpDir::NegYUp, true);
+        ImGui::SetItemDefaultFocus();
       }
       if (ImGui::Selectable("Z Up", view::upDir == view::UpDir::ZUp)) {
-        view::upDir = view::UpDir::ZUp;
-        view::flyToHomeView();
+        view::setUpDir(view::UpDir::ZUp, true);
         ImGui::SetItemDefaultFocus();
-        upStyleName = "Z Up";
+      }
+      if (ImGui::Selectable("-Z Up", view::upDir == view::UpDir::NegZUp)) {
+        view::setUpDir(view::UpDir::NegZUp, true);
+        ImGui::SetItemDefaultFocus();
       }
       ImGui::EndCombo();
     }
@@ -559,6 +626,17 @@ void buildViewGui() {
     ImGui::TreePop();
   }
 }
+
+void setUpDir(UpDir newUpDir, bool animateFlight) {
+  upDir = newUpDir;
+  if (animateFlight) {
+    flyToHomeView();
+  } else {
+    resetCameraToHomeView();
+  }
+}
+
+UpDir getUpDir() { return upDir; }
 
 } // namespace view
 } // namespace polyscope

@@ -6,12 +6,14 @@
 #include "polyscope/screenshot.h"
 #include "polyscope/structure.h"
 #include "polyscope/utilities.h"
+#include "polyscope/widget.h"
 
 #include "imgui.h"
 
 #include <functional>
 #include <map>
 #include <unordered_set>
+#include <set>
 
 
 namespace polyscope {
@@ -49,7 +51,10 @@ extern std::tuple<glm::vec3, glm::vec3> boundingBox;
 // representative center for all registered structures
 extern glm::vec3 center;
 
-// A callback function used to render a "user" gui
+// a list of widgets in the scene
+extern std::set<Widget*> widgets;
+
+// a callback function used to render a "user" gui
 extern std::function<void()> userCallback;
 
 } // namespace state
@@ -79,6 +84,10 @@ void removeAllStructures();
 // Recompute the global state::lengthScale, boundingBox, and center by looping over registered structures
 void updateStructureExtents();
 
+// Essentially regenerates all state and programs within Polyscope, calling refresh() recurisvely on all structures and
+// quantities
+void refresh();
+
 // === Handle draw flow, interrupts, and popups
 
 // Main draw call . Note that due to cached drawing, this will draw the 3D structures
@@ -94,7 +103,7 @@ bool redrawRequested();
 // in general the top callback will be called instead. Primarily exists to manage the ImGUI context, so callbacks can
 // create other contexts and circumvent the main draw loop. This is used internally to implement messages, element
 // selections, etc.
-void pushContext(std::function<void()> callbackFunction, bool drawDefaultUI=true);
+void pushContext(std::function<void()> callbackFunction, bool drawDefaultUI = true);
 void popContext();
 
 // === Utility
@@ -104,6 +113,10 @@ void popContext();
 void mainLoopIteration();
 void initializeImGUIContext();
 void drawStructures();
+
+// Called to check any options that might have been changed and perform appropriate updates. Users generally should not
+// need to call this directly.
+void processLazyProperties();
 
 
 } // namespace polyscope
