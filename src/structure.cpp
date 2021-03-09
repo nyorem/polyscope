@@ -11,7 +11,8 @@ Structure::Structure(std::string name_, std::string subtypeName)
     : name(name_), enabled(subtypeName + "#" + name + "#enabled", true),
       objectTransform(subtypeName + "#" + name + "#object_transform", glm::mat4(1.0)),
       transparency(subtypeName + "#" + name + "#transparency", 1.0),
-      transformGizmo(subtypeName + "#" + name + "#transform_gizmo", objectTransform.get(), &objectTransform) {
+      transformGizmo(subtypeName + "#" + name + "#transform_gizmo", objectTransform.get(), &objectTransform),
+      ignoredSlicePlaneNames(subtypeName + "#" + name + "#ignored_slice_planes", {}) {
   validateName(name);
 }
 
@@ -61,7 +62,8 @@ void Structure::buildUI() {
         if (ImGui::MenuItem("Center")) centerBoundingBox();
         if (ImGui::MenuItem("Unit Scale")) rescaleToUnit();
         if (ImGui::MenuItem("Reset")) resetTransform();
-        if (ImGui::MenuItem("Show Gizmo", NULL, &transformGizmo.enabled.get())) transformGizmo.enabled.manuallyChanged();
+        if (ImGui::MenuItem("Show Gizmo", NULL, &transformGizmo.enabled.get()))
+          transformGizmo.enabled.manuallyChanged();
         ImGui::EndMenu();
       }
 
@@ -72,6 +74,24 @@ void Structure::buildUI() {
         ImGui::TextUnformatted("Current mode: ");
         ImGui::SameLine();
         ImGui::TextUnformatted(modeName(render::engine->getTransparencyMode()).c_str());
+        ImGui::EndMenu();
+      }
+
+      // Toggle whether slice planes apply 
+      if (ImGui::BeginMenu("Slice planes")) {
+
+        if (state::slicePlanes.empty()) {
+          // if there are none, show a helpful message
+          ImGui::TextUnformatted("Note: Add slice planes in");
+          ImGui::TextUnformatted("      View --> Slice Planes.");
+        } else {
+          // otherwise, show toggles for each
+          for (SlicePlane* s : state::slicePlanes) {
+            bool planeEnabled = !getIgnoreSlicePlane(s->name);
+            if (ImGui::MenuItem(s->name.c_str(), NULL, planeEnabled)) setIgnoreSlicePlane(s->name, planeEnabled);
+          }
+        }
+
         ImGui::EndMenu();
       }
 
@@ -161,6 +181,29 @@ void Structure::setTransformUniforms(render::ShaderProgram& p) {
       p.setTextureFromBuffer("t_minDepth", render::engine->sceneDepthMin.get());
     }
   }
+
+  // Respect any slice planes
+  for (SlicePlane* s : state::slicePlanes) {
+    bool ignoreThisPlane = getIgnoreSlicePlane(s->name);
+    s->setSceneObjectUniforms(p, ignoreThisPlane);
+  }
+
+  // TODO this chain if "if"s is not great. Set up some system in the render engine to conditionally set these? Maybe
+  // a list of lambdas? Ugh.
+  if (p.hasUniform("u_viewport_worldPos")) {
+    glm::vec4 viewport = render::engine->getCurrentViewport();
+    p.setUniform("u_viewport_worldPos", viewport);
+  }
+  if (p.hasUniform("u_invProjMatrix_worldPos")) {
+    glm::mat4 P = view::getCameraPerspectiveMatrix();
+    glm::mat4 Pinv = glm::inverse(P);
+    p.setUniform("u_invProjMatrix_worldPos", glm::value_ptr(Pinv));
+  }
+  if (p.hasUniform("u_invViewMatrix_worldPos")) {
+    glm::mat4 V = view::getCameraViewMatrix();
+    glm::mat4 Vinv = glm::inverse(V);
+    p.setUniform("u_invViewMatrix_worldPos", glm::value_ptr(Vinv));
+  }
 }
 
 std::string Structure::uniquePrefix() { return typeName() + "#" + name + "#"; }
@@ -179,5 +222,18 @@ Structure* Structure::setTransparency(double newVal) {
   return this;
 }
 double Structure::getTransparency() { return transparency.get(); }
+
+void Structure::setIgnoreSlicePlane(std::string name, bool newValue) {
+  if (getIgnoreSlicePlane(name) == newValue) return;
+  ignoredSlicePlaneNames.get().push_back(name);
+  ignoredSlicePlaneNames.manuallyChanged();
+  requestRedraw();
+}
+
+bool Structure::getIgnoreSlicePlane(std::string name) {
+  std::vector<std::string>& names = ignoredSlicePlaneNames.get();
+  bool ignoreThisPlane = (std::find(names.begin(), names.end(), name) != names.end());
+  return ignoreThisPlane;
+}
 
 } // namespace polyscope

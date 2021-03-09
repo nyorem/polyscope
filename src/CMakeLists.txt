@@ -133,6 +133,7 @@ SET(SRCS
   persistent_value.cpp
   color_management.cpp
   transformation_gizmo.cpp
+  slice_plane.cpp
 
   ## Structures
 
@@ -225,6 +226,7 @@ SET(HEADERS
 	${INCLUDE_ROOT}/ribbon_artist.h
 	${INCLUDE_ROOT}/scaled_value.h
 	${INCLUDE_ROOT}/screenshot.h
+    ${INCLUDE_ROOT}/slice_plane.h
 	${INCLUDE_ROOT}/standardize_data_array.h
 	${INCLUDE_ROOT}/structure.h
 	${INCLUDE_ROOT}/structure.ipp

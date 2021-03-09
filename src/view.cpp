@@ -596,33 +596,40 @@ void buildViewGui() {
     ImGui::SameLine();
     ImGui::Text("Up Direction");
 
-    // Field of view
-    float fovF = fov;
-    if (ImGui::SliderFloat(" Field of View", &fovF, 5.0, 160.0, "%.2f deg")) {
-      fov = fovF;
-      requestRedraw();
-    };
+    ImGui::SetNextTreeNodeOpen(false, ImGuiCond_FirstUseEver);
+    if (ImGui::TreeNode("Camera Parameters")) {
 
-    // Clip planes
-    float nearClipRatioF = nearClipRatio;
-    float farClipRatioF = farClipRatio;
-    if (ImGui::SliderFloat(" Clip Near", &nearClipRatioF, 0., 10., "%.5f", 3.)) {
-      nearClipRatio = nearClipRatioF;
-      requestRedraw();
-    }
-    if (ImGui::SliderFloat(" Clip Far", &farClipRatioF, 1., 1000., "%.2f", 3.)) {
-      farClipRatio = farClipRatioF;
-      requestRedraw();
+      // Field of view
+      float fovF = fov;
+      if (ImGui::SliderFloat(" Field of View", &fovF, 5.0, 160.0, "%.2f deg")) {
+        fov = fovF;
+        requestRedraw();
+      };
+
+      // Clip planes
+      float nearClipRatioF = nearClipRatio;
+      float farClipRatioF = farClipRatio;
+      if (ImGui::SliderFloat(" Clip Near", &nearClipRatioF, 0., 10., "%.5f", 3.)) {
+        nearClipRatio = nearClipRatioF;
+        requestRedraw();
+      }
+      if (ImGui::SliderFloat(" Clip Far", &farClipRatioF, 1., 1000., "%.2f", 3.)) {
+        farClipRatio = farClipRatioF;
+        requestRedraw();
+      }
+
+      // Move speed
+      float moveScaleF = view::moveScale;
+      ImGui::SliderFloat(" Move Speed", &moveScaleF, 0.0, 1.0, "%.5f", 3.);
+      view::moveScale = moveScaleF;
+
+      ImGui::TreePop();
     }
 
-    // Move speed
-    float moveScaleF = view::moveScale;
-    ImGui::SliderFloat(" Move Speed", &moveScaleF, 0.0, 1.0, "%.5f", 3.);
-    view::moveScale = moveScaleF;
+
+    buildSlicePlaneGUI();
 
     ImGui::PopItemWidth();
-
-
     ImGui::TreePop();
   }
 }
